@@ -51,16 +51,20 @@ export const getRedirectRuleViaEdge = async ({
     // Handle wildcard patterns like "introduction-deck/*"
     if (normalizedRuleKey.includes("*")) {
       const prefix = normalizedRuleKey.replace(/\*.*$/, "").replace(/\/$/, "");
-      const prefixSegments = prefix.split("/").filter(Boolean);
       
       // Check if the path starts with the prefix
       if (normalizedPath.startsWith(prefix)) {
         // Extract the matched path (everything after the prefix)
-        const matchedPath = normalizedPath.slice(prefix.length).replace(/^\//, "");
-        if (matchedPath || prefixSegments.length === pathSegments.length) {
+        const remainingPath = normalizedPath.slice(prefix.length);
+        const matchedPath = remainingPath.replace(/^\//, "") || "";
+        
+        // Match if:
+        // 1. There's a remaining path after the prefix, OR
+        // 2. The path exactly matches the prefix (for patterns like "prefix/*" matching "prefix")
+        if (matchedPath || normalizedPath === prefix) {
           // Store the full child key for analytics tracking
           const childKey = normalizedPath;
-          return { ...rule, matchedPath, childKey };
+          return { ...rule, matchedPath: matchedPath || "", childKey };
         }
       }
     } 

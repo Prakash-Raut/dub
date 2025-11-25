@@ -96,14 +96,14 @@ export async function LinkMiddleware(req: NextRequest, ev: NextFetchEvent) {
     if (!linkData) {
       const redirectRule = await getRedirectRuleViaEdge({
         domain,
-        path: fullPath,
+        path: fullKey, // Use fullKey (path without query params) for pattern matching
       });
 
       if (redirectRule) {
         linkData = redirectRule;
         isRedirectRule = true;
         matchedPath = redirectRule.matchedPath;
-        childKey = redirectRule.childKey || fullPath.replace(/^\//, "");
+        childKey = redirectRule.childKey || fullKey;
       } else {
         if (domain === "buff.ly") {
           return await crawlBitly(req);
