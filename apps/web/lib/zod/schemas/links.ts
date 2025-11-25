@@ -446,6 +446,19 @@ export const createLinkBodySchema = z.object({
     .describe(
       "Whether the short link uses link cloaking. Defaults to `false` if not provided.",
     ),
+  isRedirectRule: z
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this link is a redirect rule (pattern-based redirect). When enabled, the `key` field should contain a pattern (e.g., `introduction-deck/*` or `:path`), and the `url` field should contain the destination pattern with placeholders (e.g., `https://domain.com/introduction-deck/:path`). Defaults to `false` if not provided.",
+    ),
+  redirectPattern: z
+    .string()
+    .max(500)
+    .nullish()
+    .describe(
+      "The pattern for the redirect rule (e.g., `:path`, `*`). This is stored for reference but the actual pattern matching is done using the `key` field.",
+    ),
   ios: parseUrlSchema
     .nullish()
     .describe(
@@ -688,6 +701,16 @@ export const LinkSchema = z
       .boolean()
       .default(false)
       .describe("Whether the short link uses link cloaking."),
+    isRedirectRule: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Whether this link is a redirect rule (pattern-based redirect).",
+      ),
+    redirectPattern: z
+      .string()
+      .nullable()
+      .describe("The pattern for the redirect rule."),
     doIndex: z
       .boolean()
       .default(false)

@@ -1,6 +1,10 @@
 import { isBlacklistedDomain } from "@/lib/edge-config";
 import { verifyFolderAccess } from "@/lib/folder/permissions";
-import { checkIfUserExists, getRandomKey } from "@/lib/planetscale";
+import {
+  checkIfKeyExists,
+  checkIfUserExists,
+  getRandomKey,
+} from "@/lib/planetscale";
 import { isNotHostedImage } from "@/lib/storage";
 import { NewLinkProps, ProcessedLinkProps } from "@/lib/types";
 import { prisma } from "@dub/prisma";
@@ -262,23 +266,51 @@ export async function processLink<T extends Record<string, any>>({
       length: keyLength,
     });
   } else if (!skipKeyChecks) {
-    const processedKey = processKey({ domain, key });
-    if (processedKey === null) {
-      return {
-        link: payload,
-        error: "Invalid key.",
-        code: "unprocessable_entity",
-      };
-    }
-    key = processedKey;
+    // Skip key processing and validation for redirect rules (they use patterns)
+    if (!payload.isRedirectRule) {
+      const processedKey = processKey({ domain, key });
+      if (processedKey === null) {
+        return {
+          link: payload,
+          error: "Invalid key.",
+          code: "unprocessable_entity",
+        };
+      }
+      key = processedKey;
 
-    const response = await keyChecks({ domain, key, workspace });
-    if (response.error && response.code) {
-      return {
-        link: payload,
-        error: response.error,
-        code: response.code,
-      };
+      const response = await keyChecks({ domain, key, workspace });
+      if (response.error && response.code) {
+        return {
+          link: payload,
+          error: response.error,
+          code: response.code,
+        };
+      }
+    } else {
+      // For redirect rules, validate that the key contains a valid pattern
+      if (!key || (!key.includes("*") && !key.includes(":path") && key !== ":path")) {
+        return {
+          link: payload,
+          error: "Redirect rule key must contain a pattern like '*', ':path', or be ':path'.",
+          code: "unprocessable_entity",
+        };
+      }
+      // Still check if a link with this exact key already exists
+      const existingLink = await checkIfKeyExists({ domain, key });
+      if (existingLink) {
+        // Allow updating an existing redirect rule, but not overriding a regular link
+        const existingLinkData = await prisma.link.findUnique({
+          where: { domain_key: { domain, key } },
+          select: { isRedirectRule: true },
+        });
+        if (existingLinkData && !existingLinkData.isRedirectRule) {
+          return {
+            link: payload,
+            error: "A regular link with this key already exists. Redirect rules cannot override existing links.",
+            code: "conflict",
+          };
+        }
+      }
     }
   }
 

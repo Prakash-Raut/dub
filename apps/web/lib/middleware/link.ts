@@ -30,6 +30,10 @@ import { linkCache } from "../api/links/cache";
 import { isCaseSensitiveDomain } from "../api/links/case-sensitivity";
 import { recordClickCache } from "../api/links/record-click-cache";
 import { getLinkViaEdge } from "../planetscale";
+import {
+  getRedirectRuleViaEdge,
+  resolveRedirectRuleUrl,
+} from "../planetscale/get-redirect-rule-via-edge";
 import { getPartnerEnrollmentInfo } from "../planetscale/get-partner-enrollment-info";
 import { cacheDeepLinkClickData } from "./utils/cache-deeplink-click-data";
 import { crawlBitly } from "./utils/crawl-bitly";
@@ -78,6 +82,9 @@ export async function LinkMiddleware(req: NextRequest, ev: NextFetchEvent) {
 
   let cachedLink = await linkCache.get({ domain, key });
   let isPartnerLink = Boolean(cachedLink?.programId && cachedLink?.partnerId);
+  let isRedirectRule = false;
+  let matchedPath: string | undefined;
+  let childKey: string | undefined; // The actual path accessed for redirect rules
 
   if (!cachedLink) {
     let linkData = await getLinkViaEdge({
@@ -85,18 +92,43 @@ export async function LinkMiddleware(req: NextRequest, ev: NextFetchEvent) {
       key,
     });
 
+    // If no direct link found, check for redirect rules
     if (!linkData) {
-      if (domain === "buff.ly") {
-        return await crawlBitly(req);
-      }
+      const redirectRule = await getRedirectRuleViaEdge({
+        domain,
+        path: fullPath,
+      });
 
-      return await handleNotFoundLink(req);
+      if (redirectRule) {
+        linkData = redirectRule;
+        isRedirectRule = true;
+        matchedPath = redirectRule.matchedPath;
+        childKey = redirectRule.childKey || fullPath.replace(/^\//, "");
+      } else {
+        if (domain === "buff.ly") {
+          return await crawlBitly(req);
+        }
+
+        return await handleNotFoundLink(req);
+      }
     }
 
     isPartnerLink = Boolean(linkData.programId && linkData.partnerId);
 
     // format link to fit the RedisLinkProps interface
     cachedLink = formatRedisLink(linkData as any);
+
+    // If it's a redirect rule, resolve the URL with the matched path
+    if (isRedirectRule && matchedPath && cachedLink.url) {
+      cachedLink = {
+        ...cachedLink,
+        url: resolveRedirectRuleUrl(cachedLink.url, matchedPath),
+      };
+      // Use the child key for tracking clicks (the actual path accessed)
+      if (childKey) {
+        key = childKey;
+      }
+    }
 
     ev.waitUntil(
       (async () => {

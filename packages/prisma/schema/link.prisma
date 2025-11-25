@@ -25,6 +25,10 @@ model Link {
 
   rewrite Boolean @default(false) // whether to rewrite the link or not
 
+  // Redirect rule support
+  isRedirectRule Boolean @default(false) // whether this link is a redirect rule (pattern-based redirect)
+  redirectPattern String? @db.VarChar(500) // pattern for redirect rule (e.g., ":path", "*") - stored in key for matching
+
   linkRetentionCleanupDisabledAt DateTime? // When link retention cleanup (see domain.linkRetentionDays) was explicitly disabled
   doIndex                        Boolean   @default(false) // we don't index short links by default
 
@@ -102,4 +106,5 @@ model Link {
   @@index(folderId) // used in /api/folders
   @@index(userId) // for relation to User table, used in /api/cron/cleanup/e2e-tests too
   @@index(partnerGroupDefaultLinkId)
+  @@index([domain, isRedirectRule]) // for finding redirect rules by domain
 }
